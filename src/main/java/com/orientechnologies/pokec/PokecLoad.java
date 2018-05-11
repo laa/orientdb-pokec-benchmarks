@@ -1,5 +1,6 @@
 package com.orientechnologies.pokec;
 
+import com.orientechnologies.common.listener.OProgressListener;
 import com.orientechnologies.orient.core.db.ODatabasePool;
 import com.orientechnologies.orient.core.db.ODatabaseSession;
 import com.orientechnologies.orient.core.db.ODatabaseType;
@@ -9,6 +10,7 @@ import com.orientechnologies.orient.core.metadata.OMetadata;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OSchema;
 import com.orientechnologies.orient.core.metadata.schema.OType;
+import com.orientechnologies.orient.core.record.impl.ODocument;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -91,8 +93,9 @@ public class PokecLoad {
         final long profilesPerSecond = 1_000_000_000 / loadTimePerProfile;
         final long loadTimePerProfileMks = loadTimePerProfile / 1000;
 
-        System.out.printf("Load time per profile %d us, throughput %d profiles/s, %d profiles were processed\n",
-            loadTimePerProfileMks, profilesPerSecond, profileCounter);
+        System.out
+            .printf("Load time per profile %d us, throughput %d profiles/s, %d profiles were processed\n", loadTimePerProfileMks,
+                profilesPerSecond, profileCounter);
 
         executorService.shutdown();
       }
@@ -167,7 +170,9 @@ public class PokecLoad {
       profile.createProperty("companies_brands", OType.STRING);
       profile.createProperty("more", OType.STRING);
 
-      profile.createIndex("user_id_index", OClass.INDEX_TYPE.UNIQUE, "user_id");
+      profile.createIndex("user_id_index", OClass.INDEX_TYPE.UNIQUE.toString(),
+          null, null, "AUTOSHARDING",
+          new String[] { "user_id" });
     }
   }
 
