@@ -7,11 +7,11 @@ import com.orientechnologies.orient.core.record.OVertex;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
 
-public class PokecLoader implements Callable<Void> {
+public class PokecProfileLoader implements Callable<Void> {
   private final ODatabasePool                    pool;
   private final ArrayBlockingQueue<PokecProfile> profileQueue;
 
-  PokecLoader(ODatabasePool pool, ArrayBlockingQueue<PokecProfile> profileQueue) {
+  PokecProfileLoader(ODatabasePool pool, ArrayBlockingQueue<PokecProfile> profileQueue) {
     this.pool = pool;
     this.profileQueue = profileQueue;
   }
@@ -28,6 +28,8 @@ public class PokecLoader implements Callable<Void> {
         try (ODatabaseSession session = pool.acquire()) {
           session.begin();
           OVertex vertex = session.newVertex("Profile");
+
+          vertex.setProperty("key", pokecProfile.key);
           vertex.setProperty("user_id", pokecProfile.user_id);
           vertex.setProperty("public_profile", pokecProfile.public_profile);
           vertex.setProperty("completion_percentage", pokecProfile.completion_percentage);

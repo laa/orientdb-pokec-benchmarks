@@ -1,6 +1,5 @@
 package com.orientechnologies.pokec;
 
-import com.orientechnologies.common.listener.OProgressListener;
 import com.orientechnologies.orient.core.db.ODatabasePool;
 import com.orientechnologies.orient.core.db.ODatabaseSession;
 import com.orientechnologies.orient.core.db.ODatabaseType;
@@ -10,11 +9,11 @@ import com.orientechnologies.orient.core.metadata.OMetadata;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OSchema;
 import com.orientechnologies.orient.core.metadata.schema.OType;
-import com.orientechnologies.orient.core.record.impl.ODocument;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -29,9 +28,11 @@ import java.util.concurrent.Future;
 import java.util.zip.GZIPInputStream;
 
 public class PokecLoad {
-  private static final String PROFILES_FILE = "soc-pokec-profiles.txt.gz";
-  private static final String NULL_STRING   = "null";
-  private static final String DB_NAME       = "pokec";
+  private static final String PROFILES_FILE  = "soc-pokec-profiles.txt.gz";
+  private static final String RELATIONS_FILE = "soc-pokec-relationships.txt.gz";
+
+  private static final String NULL_STRING = "null";
+  private static final String DB_NAME     = "pokec";
 
   public static void main(String[] args) throws Exception {
     try (OrientDB orientDB = new OrientDB("plocal:./build/databases", OrientDBConfig.defaultConfig())) {
@@ -43,63 +44,129 @@ public class PokecLoad {
 
       generateSchema(orientDB);
 
+      final ExecutorService executorService = Executors.newCachedThreadPool();
+
       try (ODatabasePool pool = new ODatabasePool(orientDB, DB_NAME, "admin", "admin")) {
-        final ArrayBlockingQueue<PokecProfile> profileQueue = new ArrayBlockingQueue<>(256);
-        final File profilesFile = new File(PROFILES_FILE);
-
-        final ExecutorService executorService = Executors.newCachedThreadPool();
-        final List<Future<Void>> futures = new ArrayList<>();
-        final int numThreads = 8;
-        for (int i = 0; i < numThreads; i++) {
-          futures.add(executorService.submit(new PokecLoader(pool, profileQueue)));
-        }
-
-        int profileCounter = 0;
-        final long startProfileLoadTs = System.nanoTime();
-        final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd kk:mm:ss.n");
-        try (FileInputStream fileInputStream = new FileInputStream(profilesFile)) {
-          try (GZIPInputStream gzipInputStream = new GZIPInputStream(fileInputStream)) {
-            try (InputStreamReader reader = new InputStreamReader(gzipInputStream)) {
-              try (BufferedReader bufferedReader = new BufferedReader(reader)) {
-
-                String line;
-
-                while ((line = bufferedReader.readLine()) != null) {
-                  final PokecProfile pokecProfile = fillPokecProfile(dateTimeFormatter, line);
-                  profileQueue.put(pokecProfile);
-
-                  profileCounter++;
-                  if (profileCounter > 0 && profileCounter % 100_000 == 0) {
-                    System.out.printf("%d profiles were processed\n", profileCounter);
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        final PokecProfile end = new PokecProfile();
-        end.user_id = -1;
-        for (int i = 0; i < numThreads; i++) {
-          profileQueue.put(end);
-        }
-
-        for (Future<Void> future : futures) {
-          future.get();
-        }
-        final long endProfileLoadTs = System.nanoTime();
-        final long profileLoadTime = endProfileLoadTs - startProfileLoadTs;
-        final long loadTimePerProfile = profileLoadTime / profileCounter;
-        final long profilesPerSecond = 1_000_000_000 / loadTimePerProfile;
-        final long loadTimePerProfileMks = loadTimePerProfile / 1000;
-
-        System.out
-            .printf("Load time per profile %d us, throughput %d profiles/s, %d profiles were processed\n", loadTimePerProfileMks,
-                profilesPerSecond, profileCounter);
+        loadProfiles(executorService, pool);
+        loadRelations(executorService, pool);
 
         executorService.shutdown();
       }
     }
+  }
+
+  private static void loadRelations(ExecutorService executorService, ODatabasePool pool)
+      throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
+    final ArrayBlockingQueue<int[]> relationsQueue = new ArrayBlockingQueue<>(256);
+    final File relationsFile = new File(RELATIONS_FILE);
+
+    final List<Future<Integer>> futures = new ArrayList<>();
+    final int numThreads = 8;
+
+    for (int i = 0; i < numThreads; i++) {
+      futures.add(executorService.submit(new PokecRelationsLoader(relationsQueue, pool)));
+    }
+
+    int relationCounter = 0;
+    final long startRelationLoadTs = System.nanoTime();
+    try (FileInputStream fileInputStream = new FileInputStream(relationsFile)) {
+      try (GZIPInputStream gzipInputStream = new GZIPInputStream(fileInputStream)) {
+        try (InputStreamReader reader = new InputStreamReader(gzipInputStream)) {
+          try (BufferedReader bufferedReader = new BufferedReader(reader)) {
+            String line;
+            while ((line = bufferedReader.readLine()) != null) {
+              final String[] relation = line.split("\\t");
+              final int[] fromTo = new int[2];
+
+              fromTo[0] = Integer.parseInt(relation[0]);
+              fromTo[1] = Integer.parseInt(relation[1]);
+
+              relationsQueue.put(fromTo);
+
+              relationCounter++;
+
+              if (relationCounter > 0 && relationCounter % 100_000 == 0) {
+                System.out.printf("%d relations were processed\n", relationCounter);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    for (int i = 0; i < numThreads; i++) {
+      relationsQueue.put(new int[] { -1, -1 });
+    }
+
+    int retries = 0;
+    for (Future<Integer> future : futures) {
+      retries += future.get();
+    }
+
+    final long endRelationLoadTs = System.nanoTime();
+    final long relationLoadTime = endRelationLoadTs - startRelationLoadTs;
+    final long loadTimePerRelation = relationLoadTime / relationCounter;
+    final long relationsPerSecond = 1_000_000_000 / loadTimePerRelation;
+    final long loadTimePerRelationMks = loadTimePerRelation / 1000;
+
+    System.out
+        .printf("Load time per relation %d us, throughput %d relation/s, %d relations were processed, %d retries were done\n", loadTimePerRelationMks,
+            relationsPerSecond, relationCounter, retries);
+  }
+
+  private static void loadProfiles(ExecutorService executorService, ODatabasePool pool)
+      throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
+    final ArrayBlockingQueue<PokecProfile> profileQueue = new ArrayBlockingQueue<>(256);
+    final File profilesFile = new File(PROFILES_FILE);
+
+    final List<Future<Void>> futures = new ArrayList<>();
+    final int numThreads = 8;
+    for (int i = 0; i < numThreads; i++) {
+      futures.add(executorService.submit(new PokecProfileLoader(pool, profileQueue)));
+    }
+
+    int profileCounter = 0;
+    final long startProfileLoadTs = System.nanoTime();
+    final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd kk:mm:ss.n");
+    try (FileInputStream fileInputStream = new FileInputStream(profilesFile)) {
+      try (GZIPInputStream gzipInputStream = new GZIPInputStream(fileInputStream)) {
+        try (InputStreamReader reader = new InputStreamReader(gzipInputStream)) {
+          try (BufferedReader bufferedReader = new BufferedReader(reader)) {
+
+            String line;
+
+            while ((line = bufferedReader.readLine()) != null) {
+              final PokecProfile pokecProfile = fillPokecProfile(dateTimeFormatter, line);
+              pokecProfile.key = "key" + FNVHash.FNVhash64(profileCounter);
+              profileQueue.put(pokecProfile);
+
+              profileCounter++;
+              if (profileCounter > 0 && profileCounter % 100_000 == 0) {
+                System.out.printf("%d profiles were processed\n", profileCounter);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    final PokecProfile end = new PokecProfile();
+    end.user_id = -1;
+    for (int i = 0; i < numThreads; i++) {
+      profileQueue.put(end);
+    }
+
+    for (Future<Void> future : futures) {
+      future.get();
+    }
+    final long endProfileLoadTs = System.nanoTime();
+    final long profileLoadTime = endProfileLoadTs - startProfileLoadTs;
+    final long loadTimePerProfile = profileLoadTime / profileCounter;
+    final long profilesPerSecond = 1_000_000_000 / loadTimePerProfile;
+    final long loadTimePerProfileMks = loadTimePerProfile / 1000;
+
+    System.out.printf("Load time per profile %d us, throughput %d profiles/s, %d profiles were processed\n", loadTimePerProfileMks,
+        profilesPerSecond, profileCounter);
   }
 
   private static void generateSchema(OrientDB orientDB) {
@@ -108,6 +175,8 @@ public class PokecLoad {
       final OSchema schema = metadata.getSchema();
       final OClass vertex = schema.getClass("V");
       final OClass profile = schema.createClass("Profile", vertex);
+
+      profile.createProperty("key", OType.STRING);
 
       profile.createProperty("user_id", OType.INTEGER);
       profile.createProperty("public_profile", OType.BOOLEAN);
@@ -170,9 +239,12 @@ public class PokecLoad {
       profile.createProperty("companies_brands", OType.STRING);
       profile.createProperty("more", OType.STRING);
 
-      profile.createIndex("user_id_index", OClass.INDEX_TYPE.UNIQUE.toString(),
-          null, null, "AUTOSHARDING",
-          new String[] { "user_id" });
+      profile.createIndex("user_id_index", OClass.INDEX_TYPE.UNIQUE.toString(), null, null,
+          "AUTOSHARDING",   new String[] { "user_id" });
+
+      profile.createIndex("key_index", OClass.INDEX_TYPE.UNIQUE.toString(), null, null,
+          "AUTOSHARDING", new String[] { "key" });
+
     }
   }
 

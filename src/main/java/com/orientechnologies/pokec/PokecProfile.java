@@ -3,6 +3,8 @@ package com.orientechnologies.pokec;
 import java.util.Date;
 
 final class PokecProfile {
+  String key;
+
   int     user_id;
   boolean public_profile;
   int     completion_percentage;
