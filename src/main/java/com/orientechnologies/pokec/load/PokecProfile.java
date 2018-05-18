@@ -1,4 +1,4 @@
-package com.orientechnologies.pokec;
+package com.orientechnologies.pokec.load;
 
 import java.util.Date;
 

@@ -1,4 +1,4 @@
-package com.orientechnologies.pokec;
+package com.orientechnologies.pokec.load;
 
 import com.orientechnologies.orient.core.db.ODatabasePool;
 import com.orientechnologies.orient.core.db.ODatabaseSession;

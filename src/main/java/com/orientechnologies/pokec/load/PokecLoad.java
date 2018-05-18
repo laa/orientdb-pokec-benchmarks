@@ -1,4 +1,4 @@
-package com.orientechnologies.pokec;
+package com.orientechnologies.pokec.load;
 
 import com.orientechnologies.orient.core.db.ODatabasePool;
 import com.orientechnologies.orient.core.db.ODatabaseSession;
@@ -9,6 +9,7 @@ import com.orientechnologies.orient.core.metadata.OMetadata;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OSchema;
 import com.orientechnologies.orient.core.metadata.schema.OType;
+import com.orientechnologies.pokec.common.FNVHash;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -28,25 +29,39 @@ import java.util.concurrent.Future;
 import java.util.zip.GZIPInputStream;
 
 public class PokecLoad {
-  private static final String PROFILES_FILE  = "soc-pokec-profiles.txt.gz";
-  private static final String RELATIONS_FILE = "soc-pokec-relationships.txt.gz";
+  private static final String DEFAULT_PROFILES_FILE  = "soc-pokec-profiles.txt.gz";
+  private static final String DEFAULT_RELATIONS_FILE = "soc-pokec-relationships.txt.gz";
 
   private static final String NULL_STRING = "null";
-  private static final String DB_NAME     = "pokec";
+
+  public static final String DEFAULT_DB_NAME = "pokec";
+  public static       String DEFAULT_DB_URL  = "plocal:./build/databases";
+  public static final String PROFILE_CLASS   = "Profile";
+
+  public static final String[] DATA_FIELDS = { "body", "i_am_working_in_field", "spoken_languages", "hobbies",
+      "i_most_enjoy_good_food", "pets", "body_type", "my_eyesight", "eye_color", "hair_color", "hair_type",
+      "completed_level_of_education", "favourite_color", "relation_to_smoking", "relation_to_alcohol", "sign_in_zodiac",
+      "on_pokec_i_am_looking_for", "love_is_for_me", "relation_to_casual_sex", "my_partner_should_be", "marital_status", "children",
+      "relation_to_children", "i_like_movies", "i_like_watching_movie", "i_like_music", "i_mostly_like_listening_to_music",
+      "the_idea_of_good_evening", "i_like_specialties_from_kitchen", "fun", "i_am_going_to_concerts", "my_active_sports",
+      "my_passive_sports", "profession", "i_like_books", "life_style", "music", "cars", "politics", "relationships", "art_culture",
+      "hobbies_interests", "science_technologies", "computers_internet", "education", "sport", "movies", "travelling", "health",
+      "companies_brands", "more" };
 
   public static void main(String[] args) throws Exception {
-    try (OrientDB orientDB = new OrientDB("plocal:./build/databases", OrientDBConfig.defaultConfig())) {
-      if (orientDB.exists(DB_NAME)) {
-        orientDB.drop(DB_NAME);
+    try (OrientDB orientDB = new OrientDB(DEFAULT_DB_URL, OrientDBConfig.defaultConfig())) {
+
+      if (orientDB.exists(DEFAULT_DB_NAME)) {
+        orientDB.drop(DEFAULT_DB_NAME);
       }
 
-      orientDB.create(DB_NAME, ODatabaseType.PLOCAL);
+      orientDB.create(DEFAULT_DB_NAME, ODatabaseType.PLOCAL);
 
       generateSchema(orientDB);
 
       final ExecutorService executorService = Executors.newCachedThreadPool();
 
-      try (ODatabasePool pool = new ODatabasePool(orientDB, DB_NAME, "admin", "admin")) {
+      try (ODatabasePool pool = new ODatabasePool(orientDB, DEFAULT_DB_NAME, "admin", "admin")) {
         loadProfiles(executorService, pool);
         loadRelations(executorService, pool);
 
@@ -58,7 +73,7 @@ public class PokecLoad {
   private static void loadRelations(ExecutorService executorService, ODatabasePool pool)
       throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
     final ArrayBlockingQueue<int[]> relationsQueue = new ArrayBlockingQueue<>(256);
-    final File relationsFile = new File(RELATIONS_FILE);
+    final File relationsFile = new File(DEFAULT_RELATIONS_FILE);
 
     final List<Future<Integer>> futures = new ArrayList<>();
     final int numThreads = 8;
@@ -109,15 +124,14 @@ public class PokecLoad {
     final long relationsPerSecond = 1_000_000_000 / loadTimePerRelation;
     final long loadTimePerRelationMks = loadTimePerRelation / 1000;
 
-    System.out
-        .printf("Load time per relation %d us, throughput %d relation/s, %d relations were processed, %d retries were done\n", loadTimePerRelationMks,
-            relationsPerSecond, relationCounter, retries);
+    System.out.printf("Load time per relation %d us, throughput %d relation/s, %d relations were processed, %d retries were done\n",
+        loadTimePerRelationMks, relationsPerSecond, relationCounter, retries);
   }
 
   private static void loadProfiles(ExecutorService executorService, ODatabasePool pool)
       throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
     final ArrayBlockingQueue<PokecProfile> profileQueue = new ArrayBlockingQueue<>(256);
-    final File profilesFile = new File(PROFILES_FILE);
+    final File profilesFile = new File(DEFAULT_PROFILES_FILE);
 
     final List<Future<Void>> futures = new ArrayList<>();
     final int numThreads = 8;
@@ -170,7 +184,7 @@ public class PokecLoad {
   }
 
   private static void generateSchema(OrientDB orientDB) {
-    try (ODatabaseSession databaseSession = orientDB.open(DB_NAME, "admin", "admin")) {
+    try (ODatabaseSession databaseSession = orientDB.open(DEFAULT_DB_NAME, "admin", "admin")) {
       final OMetadata metadata = databaseSession.getMetadata();
       final OSchema schema = metadata.getSchema();
       final OClass vertex = schema.getClass("V");
@@ -239,11 +253,10 @@ public class PokecLoad {
       profile.createProperty("companies_brands", OType.STRING);
       profile.createProperty("more", OType.STRING);
 
-      profile.createIndex("user_id_index", OClass.INDEX_TYPE.UNIQUE.toString(), null, null,
-          "AUTOSHARDING",   new String[] { "user_id" });
+      profile.createIndex("user_id_index", OClass.INDEX_TYPE.UNIQUE.toString(), null, null, "AUTOSHARDING",
+          new String[] { "user_id" });
 
-      profile.createIndex("key_index", OClass.INDEX_TYPE.UNIQUE.toString(), null, null,
-          "AUTOSHARDING", new String[] { "key" });
+      profile.createIndex("key_index", OClass.INDEX_TYPE.UNIQUE.toString(), null, null, "AUTOSHARDING", new String[] { "key" });
 
     }
   }

@@ -1,10 +1,10 @@
-package com.orientechnologies.pokec;
+package com.orientechnologies.pokec.common;
 
-class FNVHash {
+public class FNVHash {
   private static final long FNV_offset_basis_64 = 0xCBF29CE484222325L;
   private static final long FNV_prime_64        = 1099511628211L;
 
-  static long FNVhash64(long val) {
+  public static long FNVhash64(long val) {
     //from http://en.wikipedia.org/wiki/Fowler_Noll_Vo_hash
     long hashval = FNV_offset_basis_64;
 

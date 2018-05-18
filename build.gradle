@@ -15,7 +15,23 @@ dependencies {
     testCompile group: 'junit', name: 'junit', version: '4.12'
 }
 
-task pokec(type: JavaExec, dependsOn: classes) {
+task pokecLoad(type: JavaExec, dependsOn: classes) {
     classpath = classpath = sourceSets.main.runtimeClasspath
-    main = 'com.orientechnologies.pokec.PokecLoad'
+    main = 'com.orientechnologies.pokec.load.PokecLoad'
+}
+
+task pokecRead(type: JavaExec, dependsOn: classes) {
+    classpath = classpath = sourceSets.main.runtimeClasspath
+    main = 'com.orientechnologies.pokec.read.PokecRead'
+}
+
+
+task pokecContentUpdate(type: JavaExec, dependsOn: classes) {
+    classpath = classpath = sourceSets.main.runtimeClasspath
+    main = 'com.orientechnologies.pokec.contentupdate.PokecContentUpdate'
+}
+
+task pokecEdgesAdd(type: JavaExec, dependsOn: classes) {
+    classpath = classpath = sourceSets.main.runtimeClasspath
+    main = 'com.orientechnologies.pokec.edgesupdate.PokecEdgesAdd'
 }
