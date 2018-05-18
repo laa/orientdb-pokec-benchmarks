@@ -35,7 +35,7 @@ public class PokecLoad {
   private static final String NULL_STRING = "null";
 
   public static final String DEFAULT_DB_NAME = "pokec";
-  public static       String DEFAULT_DB_URL  = "plocal:./build/databases";
+  public static final String DEFAULT_DB_URL  = "plocal:./build/databases";
   public static final String PROFILE_CLASS   = "Profile";
 
   public static final String[] DATA_FIELDS = { "body", "i_am_working_in_field", "spoken_languages", "hobbies",
@@ -72,6 +72,7 @@ public class PokecLoad {
 
   private static void loadRelations(ExecutorService executorService, ODatabasePool pool)
       throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
+    System.out.printf("Start loading of relations for %s database\n", DEFAULT_DB_URL);
     final ArrayBlockingQueue<int[]> relationsQueue = new ArrayBlockingQueue<>(256);
     final File relationsFile = new File(DEFAULT_RELATIONS_FILE);
 
@@ -124,12 +125,15 @@ public class PokecLoad {
     final long relationsPerSecond = 1_000_000_000 / loadTimePerRelation;
     final long loadTimePerRelationMks = loadTimePerRelation / 1000;
 
+    System.out.printf("Loading of relations for %s database is completed\n", DEFAULT_DB_URL);
     System.out.printf("Load time per relation %d us, throughput %d relation/s, %d relations were processed, %d retries were done\n",
         loadTimePerRelationMks, relationsPerSecond, relationCounter, retries);
   }
 
   private static void loadProfiles(ExecutorService executorService, ODatabasePool pool)
       throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
+    System.out.printf("Start loading of profiles for %s database\n", DEFAULT_DB_URL);
+
     final ArrayBlockingQueue<PokecProfile> profileQueue = new ArrayBlockingQueue<>(256);
     final File profilesFile = new File(DEFAULT_PROFILES_FILE);
 
@@ -179,11 +183,14 @@ public class PokecLoad {
     final long profilesPerSecond = 1_000_000_000 / loadTimePerProfile;
     final long loadTimePerProfileMks = loadTimePerProfile / 1000;
 
+    System.out.printf("Start loading of profiles for %s database is completed\n", DEFAULT_DB_URL);
     System.out.printf("Load time per profile %d us, throughput %d profiles/s, %d profiles were processed\n", loadTimePerProfileMks,
         profilesPerSecond, profileCounter);
   }
 
   private static void generateSchema(OrientDB orientDB) {
+    System.out.printf("Start schema generation for %s database\n", DEFAULT_DB_URL);
+
     try (ODatabaseSession databaseSession = orientDB.open(DEFAULT_DB_NAME, "admin", "admin")) {
       final OMetadata metadata = databaseSession.getMetadata();
       final OSchema schema = metadata.getSchema();
@@ -259,6 +266,8 @@ public class PokecLoad {
       profile.createIndex("key_index", OClass.INDEX_TYPE.UNIQUE.toString(), null, null, "AUTOSHARDING", new String[] { "key" });
 
     }
+
+    System.out.printf("Start schema generation for %s database is completed\n", DEFAULT_DB_URL);
   }
 
   private static PokecProfile fillPokecProfile(DateTimeFormatter dateTimeFormatter, String line) {
