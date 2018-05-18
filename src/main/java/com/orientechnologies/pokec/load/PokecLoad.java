@@ -29,6 +29,10 @@ import java.util.concurrent.Future;
 import java.util.zip.GZIPInputStream;
 
 public class PokecLoad {
+  private static final long NANOS_IN_HOURS   = 1_000_000_000L * 60 * 60;
+  private static final long NANOS_IN_MINUTES = 1_000_000_000L * 60;
+  private static final long NANOS_IN_SECONDS = 1_000_000_000L * 60;
+
   private static final String DEFAULT_PROFILES_FILE  = "soc-pokec-profiles.txt.gz";
   private static final String DEFAULT_RELATIONS_FILE = "soc-pokec-relationships.txt.gz";
 
@@ -73,18 +77,22 @@ public class PokecLoad {
   private static void loadRelations(ExecutorService executorService, ODatabasePool pool)
       throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
     System.out.printf("Start loading of relations for %s database\n", DEFAULT_DB_URL);
-    final ArrayBlockingQueue<int[]> relationsQueue = new ArrayBlockingQueue<>(256);
     final File relationsFile = new File(DEFAULT_RELATIONS_FILE);
 
     final List<Future<Integer>> futures = new ArrayList<>();
     final int numThreads = 8;
 
+    @SuppressWarnings("unchecked")
+    ArrayBlockingQueue<int[]>[] relationsQueues = new ArrayBlockingQueue[numThreads];
     for (int i = 0; i < numThreads; i++) {
-      futures.add(executorService.submit(new PokecRelationsLoader(relationsQueue, pool)));
+      final ArrayBlockingQueue<int[]> queue = new ArrayBlockingQueue<>(10 * 1024);
+      futures.add(executorService.submit(new PokecRelationsLoader(queue, pool)));
+      relationsQueues[i] = queue;
     }
 
     int relationCounter = 0;
     final long startRelationLoadTs = System.nanoTime();
+    long ts = startRelationLoadTs;
     try (FileInputStream fileInputStream = new FileInputStream(relationsFile)) {
       try (GZIPInputStream gzipInputStream = new GZIPInputStream(fileInputStream)) {
         try (InputStreamReader reader = new InputStreamReader(gzipInputStream)) {
@@ -97,12 +105,23 @@ public class PokecLoad {
               fromTo[0] = Integer.parseInt(relation[0]);
               fromTo[1] = Integer.parseInt(relation[1]);
 
-              relationsQueue.put(fromTo);
+              final int queueIndex = fromTo[0] % numThreads;
+              final ArrayBlockingQueue<int[]> queue = relationsQueues[queueIndex];
+              queue.put(fromTo);
 
               relationCounter++;
 
               if (relationCounter > 0 && relationCounter % 100_000 == 0) {
-                System.out.printf("%d relations were processed\n", relationCounter);
+                final long currentTimeStamp = System.nanoTime();
+                final long timePassed = currentTimeStamp - ts;
+                ts = currentTimeStamp;
+
+                final long timePerItem = timePassed / 100_000;
+                final long timePerItemMks = timePerItem / 1_000;
+                final long itemsPerSecond = 1_000_000_000 / timePerItem;
+
+                System.out.printf("%d relations were processed, avg. insertion time %d us, throughput %d rel/s\n", relationCounter,
+                    timePerItemMks, itemsPerSecond);
               }
             }
           }
@@ -111,7 +130,7 @@ public class PokecLoad {
     }
 
     for (int i = 0; i < numThreads; i++) {
-      relationsQueue.put(new int[] { -1, -1 });
+      relationsQueues[i].put(new int[] { -1, -1 });
     }
 
     int retries = 0;
@@ -121,11 +140,17 @@ public class PokecLoad {
 
     final long endRelationLoadTs = System.nanoTime();
     final long relationLoadTime = endRelationLoadTs - startRelationLoadTs;
+
     final long loadTimePerRelation = relationLoadTime / relationCounter;
     final long relationsPerSecond = 1_000_000_000 / loadTimePerRelation;
     final long loadTimePerRelationMks = loadTimePerRelation / 1000;
 
-    System.out.printf("Loading of relations for %s database is completed\n", DEFAULT_DB_URL);
+    final long hours = relationLoadTime / NANOS_IN_HOURS;
+    final long minutes = (relationLoadTime - hours * NANOS_IN_HOURS) / NANOS_IN_MINUTES;
+    final long seconds = (relationLoadTime - hours * NANOS_IN_HOURS - minutes * NANOS_IN_MINUTES) / NANOS_IN_SECONDS;
+
+    System.out.printf("Loading of relations for %s database is completed in %d h. %d m. %d s.\n", DEFAULT_DB_URL, hours, minutes,
+        seconds);
     System.out.printf("Load time per relation %d us, throughput %d relation/s, %d relations were processed, %d retries were done\n",
         loadTimePerRelationMks, relationsPerSecond, relationCounter, retries);
   }
@@ -183,7 +208,13 @@ public class PokecLoad {
     final long profilesPerSecond = 1_000_000_000 / loadTimePerProfile;
     final long loadTimePerProfileMks = loadTimePerProfile / 1000;
 
-    System.out.printf("Start loading of profiles for %s database is completed\n", DEFAULT_DB_URL);
+    final long hours = profileLoadTime / NANOS_IN_HOURS;
+    final long minutes = (profileLoadTime - hours * NANOS_IN_HOURS) / NANOS_IN_MINUTES;
+    final long seconds = (profileLoadTime - hours * NANOS_IN_HOURS - minutes * NANOS_IN_MINUTES) / NANOS_IN_SECONDS;
+
+    System.out
+        .printf("Start loading of profiles for %s database is completed in %d h. %d m. %d s.\n", DEFAULT_DB_URL, hours, minutes,
+            seconds);
     System.out.printf("Load time per profile %d us, throughput %d profiles/s, %d profiles were processed\n", loadTimePerProfileMks,
         profilesPerSecond, profileCounter);
   }
