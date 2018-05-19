@@ -79,9 +79,9 @@ public class PokecLoad {
     }
 
     System.out.printf("Load of data of pokec database into %s is completed\n", DEFAULT_DB_URL);
-    System.out.println("Load statistics:\n");
-    System.out.println(profileStatistics);
-    System.out.println(relationStatistics);
+    System.out.println("Load statistics:");
+    System.out.print(profileStatistics);
+    System.out.print(relationStatistics);
   }
 
   private static String loadRelations(ExecutorService executorService, ODatabasePool pool)
