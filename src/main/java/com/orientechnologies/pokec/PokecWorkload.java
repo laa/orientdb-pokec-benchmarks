@@ -22,7 +22,7 @@ import static com.orientechnologies.pokec.load.PokecLoad.DEFAULT_DB_NAME;
 public abstract class PokecWorkload {
   private static final long NANOS_IN_HOURS   = 1_000_000_000L * 60 * 60;
   private static final long NANOS_IN_MINUTES = 1_000_000_000L * 60;
-  private static final long NANOS_IN_SECONDS = 1_000_000_000L * 60;
+  private static final long NANOS_IN_SECONDS = 1_000_000_000L ;
 
   protected void run() throws Exception {
     final long profilesCount;

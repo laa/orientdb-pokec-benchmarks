@@ -21,6 +21,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Formatter;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -31,7 +32,7 @@ import java.util.zip.GZIPInputStream;
 public class PokecLoad {
   private static final long NANOS_IN_HOURS   = 1_000_000_000L * 60 * 60;
   private static final long NANOS_IN_MINUTES = 1_000_000_000L * 60;
-  private static final long NANOS_IN_SECONDS = 1_000_000_000L * 60;
+  private static final long NANOS_IN_SECONDS = 1_000_000_000L;
 
   private static final String DEFAULT_PROFILES_FILE  = "soc-pokec-profiles.txt.gz";
   private static final String DEFAULT_RELATIONS_FILE = "soc-pokec-relationships.txt.gz";
@@ -53,6 +54,10 @@ public class PokecLoad {
       "companies_brands", "more" };
 
   public static void main(String[] args) throws Exception {
+    final String profileStatistics;
+    final String relationStatistics;
+
+    System.out.printf("Starting of load of data of pokec database into %s \n", DEFAULT_DB_URL);
     try (OrientDB orientDB = new OrientDB(DEFAULT_DB_URL, OrientDBConfig.defaultConfig())) {
 
       if (orientDB.exists(DEFAULT_DB_NAME)) {
@@ -66,15 +71,20 @@ public class PokecLoad {
       final ExecutorService executorService = Executors.newCachedThreadPool();
 
       try (ODatabasePool pool = new ODatabasePool(orientDB, DEFAULT_DB_NAME, "admin", "admin")) {
-        loadProfiles(executorService, pool);
-        loadRelations(executorService, pool);
+        profileStatistics = loadProfiles(executorService, pool);
+        relationStatistics = loadRelations(executorService, pool);
 
         executorService.shutdown();
       }
     }
+
+    System.out.printf("Load of data of pokec database into %s is completed\n", DEFAULT_DB_URL);
+    System.out.println("Load statistics:\n");
+    System.out.println(profileStatistics);
+    System.out.println(relationStatistics);
   }
 
-  private static void loadRelations(ExecutorService executorService, ODatabasePool pool)
+  private static String loadRelations(ExecutorService executorService, ODatabasePool pool)
       throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
     System.out.printf("Start loading of relations for %s database\n", DEFAULT_DB_URL);
     final File relationsFile = new File(DEFAULT_RELATIONS_FILE);
@@ -151,11 +161,15 @@ public class PokecLoad {
 
     System.out.printf("Loading of relations for %s database is completed in %d h. %d m. %d s.\n", DEFAULT_DB_URL, hours, minutes,
         seconds);
-    System.out.printf("Load time per relation %d us, throughput %d relation/s, %d relations were processed, %d retries were done\n",
-        loadTimePerRelationMks, relationsPerSecond, relationCounter, retries);
+
+    String statistics = String
+        .format("Load time per relation %d us, throughput %d relation/s, %d relations were processed, %d retries were done\n",
+            loadTimePerRelationMks, relationsPerSecond, relationCounter, retries);
+    System.out.print(statistics);
+    return statistics;
   }
 
-  private static void loadProfiles(ExecutorService executorService, ODatabasePool pool)
+  private static String loadProfiles(ExecutorService executorService, ODatabasePool pool)
       throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
     System.out.printf("Start loading of profiles for %s database\n", DEFAULT_DB_URL);
 
@@ -170,6 +184,7 @@ public class PokecLoad {
 
     int profileCounter = 0;
     final long startProfileLoadTs = System.nanoTime();
+    long ts = startProfileLoadTs;
     final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd kk:mm:ss.n");
     try (FileInputStream fileInputStream = new FileInputStream(profilesFile)) {
       try (GZIPInputStream gzipInputStream = new GZIPInputStream(fileInputStream)) {
@@ -185,7 +200,17 @@ public class PokecLoad {
 
               profileCounter++;
               if (profileCounter > 0 && profileCounter % 100_000 == 0) {
-                System.out.printf("%d profiles were processed\n", profileCounter);
+                final long currentTimeStamp = System.nanoTime();
+                final long timePassed = currentTimeStamp - ts;
+                ts = currentTimeStamp;
+
+                final long timePerItem = timePassed / 100_000;
+                final long timePerItemMks = timePerItem / 1_000;
+                final long itemsPerSecond = 1_000_000_000 / timePerItem;
+
+                System.out
+                    .printf("%d profiles were processed, avg. insertion time %d us, throughput %d profiles/s\n", profileCounter,
+                        timePerItemMks, itemsPerSecond);
               }
             }
           }
@@ -215,8 +240,11 @@ public class PokecLoad {
     System.out
         .printf("Start loading of profiles for %s database is completed in %d h. %d m. %d s.\n", DEFAULT_DB_URL, hours, minutes,
             seconds);
-    System.out.printf("Load time per profile %d us, throughput %d profiles/s, %d profiles were processed\n", loadTimePerProfileMks,
-        profilesPerSecond, profileCounter);
+    String statistics = String
+        .format("Load time per profile %d us, throughput %d profiles/s, %d profiles were processed\n", loadTimePerProfileMks,
+            profilesPerSecond, profileCounter);
+    System.out.print(statistics);
+    return statistics;
   }
 
   private static void generateSchema(OrientDB orientDB) {
