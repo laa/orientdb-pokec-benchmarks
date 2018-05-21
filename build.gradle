@@ -11,7 +11,8 @@ repositories {
 }
 
 dependencies {
-    compile group: 'com.orientechnologies', name: 'orientdb-core', version: '3.0.1-SNAPSHOT'
+    compile group: 'com.orientechnologies', name: 'orientdb-core', version: '3.0.2-SNAPSHOT'
+    compile group: 'commons-cli', name: 'commons-cli', version: '1.4'
     testCompile group: 'junit', name: 'junit', version: '4.12'
 }
 
@@ -31,11 +32,5 @@ task pokecRead(type: JavaExec, dependsOn: classes) {
 task pokecContentUpdate(type: JavaExec, dependsOn: classes) {
     classpath = classpath = sourceSets.main.runtimeClasspath
     main = 'com.orientechnologies.pokec.contentupdate.PokecContentUpdate'
-    jvmArgs = ["-server"]
-}
-
-task pokecEdgesAdd(type: JavaExec, dependsOn: classes) {
-    classpath = classpath = sourceSets.main.runtimeClasspath
-    main = 'com.orientechnologies.pokec.edgesupdate.PokecEdgesAdd'
     jvmArgs = ["-server"]
 }
