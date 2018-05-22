@@ -1,27 +1,33 @@
 package com.orientechnologies.pokec.load;
 
+import com.orientechnologies.common.io.OFileUtils;
 import com.orientechnologies.orient.core.db.ODatabasePool;
 import com.orientechnologies.orient.core.db.ODatabaseSession;
 import com.orientechnologies.orient.core.db.ODatabaseType;
 import com.orientechnologies.orient.core.db.OrientDB;
-import com.orientechnologies.orient.core.db.OrientDBConfig;
 import com.orientechnologies.orient.core.metadata.OMetadata;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OSchema;
 import com.orientechnologies.orient.core.metadata.schema.OType;
+import com.orientechnologies.pokec.common.CommandLineUtils;
 import com.orientechnologies.pokec.common.FNVHash;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.sql.SQLOutput;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.Formatter;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -39,9 +45,7 @@ public class PokecLoad {
 
   private static final String NULL_STRING = "null";
 
-  public static final String DEFAULT_DB_NAME = "pokec";
-  public static final String DEFAULT_DB_URL  = "plocal:./build/databases";
-  public static final String PROFILE_CLASS   = "Profile";
+  public static final String PROFILE_CLASS = "Profile";
 
   public static final String[] DATA_FIELDS = { "body", "i_am_working_in_field", "spoken_languages", "hobbies",
       "i_most_enjoy_good_food", "pets", "body_type", "my_eyesight", "eye_color", "hair_color", "hair_type",
@@ -54,43 +58,75 @@ public class PokecLoad {
       "companies_brands", "more" };
 
   public static void main(String[] args) throws Exception {
-    final String profileStatistics;
-    final String relationStatistics;
+    Options options = CommandLineUtils.generateCommandLineOptions();
 
-    System.out.printf("Starting of load of data of pokec database into %s \n", DEFAULT_DB_URL);
-    try (OrientDB orientDB = new OrientDB(DEFAULT_DB_URL, OrientDBConfig.defaultConfig())) {
+    CommandLineParser parser = new DefaultParser();
+    try {
+      CommandLine cmd = parser.parse(options, args);
 
-      if (orientDB.exists(DEFAULT_DB_NAME)) {
-        orientDB.drop(DEFAULT_DB_NAME);
+      final String profileStatistics;
+      final String relationStatistics;
+
+      try (OrientDB orientDB = CommandLineUtils.createOrientDBInstance(cmd)) {
+        final String path = CommandLineUtils.path(cmd);
+
+        System.out.printf("Starting of load of data of pokec database %s\n", path);
+        final boolean embedded = CommandLineUtils.isEmbedded(cmd);
+
+        final String dbName = CommandLineUtils.dbName(cmd);
+
+        if (embedded) {
+          OFileUtils.deleteRecursively(new File(path));
+          orientDB.create(dbName, ODatabaseType.PLOCAL);
+        }
+
+        final boolean isAutosharded = CommandLineUtils.isAutosharded(cmd);
+        final OClass.INDEX_TYPE indexType = CommandLineUtils.getIndexType(cmd);
+
+        if (isAutosharded) {
+          System.out.println("Autosharded index will be used for indexing of DB keys");
+        } else {
+          System.out.printf("%s index will be used for indexing of keys\n", indexType.toString());
+        }
+
+        generateSchema(orientDB, path, dbName, isAutosharded, indexType);
+
+        final ExecutorService executorService = Executors.newCachedThreadPool();
+
+        final int numThreads = CommandLineUtils.numThreads(cmd);
+        System.out.printf("%d threads will be used for data load\n", numThreads);
+
+        try (ODatabasePool pool = new ODatabasePool(orientDB, dbName, "admin", "admin")) {
+          profileStatistics = loadProfiles(executorService, pool, path, numThreads);
+          relationStatistics = loadRelations(executorService, pool, path, numThreads);
+
+          executorService.shutdown();
+        }
+
+        System.out.printf("Load of data of pokec database into %s is completed\n", path);
+        System.out.println("Following settings were used:");
+        System.out.printf("Number of threads : %d \n", numThreads);
+        if (isAutosharded) {
+          System.out.println("Autosharded index was used for indexing of keys");
+        } else {
+          System.out.printf("%s index was used for indexing of keys\n", indexType.toString());
+        }
+        System.out.println("Load statistics:");
+        System.out.print(profileStatistics);
+        System.out.print(relationStatistics);
       }
-
-      orientDB.create(DEFAULT_DB_NAME, ODatabaseType.PLOCAL);
-
-      generateSchema(orientDB);
-
-      final ExecutorService executorService = Executors.newCachedThreadPool();
-
-      try (ODatabasePool pool = new ODatabasePool(orientDB, DEFAULT_DB_NAME, "admin", "admin")) {
-        profileStatistics = loadProfiles(executorService, pool);
-        relationStatistics = loadRelations(executorService, pool);
-
-        executorService.shutdown();
-      }
+    } catch (ParseException pe) {
+      System.out.println(pe.getMessage());
     }
 
-    System.out.printf("Load of data of pokec database into %s is completed\n", DEFAULT_DB_URL);
-    System.out.println("Load statistics:");
-    System.out.print(profileStatistics);
-    System.out.print(relationStatistics);
   }
 
-  private static String loadRelations(ExecutorService executorService, ODatabasePool pool)
+  private static String loadRelations(ExecutorService executorService, ODatabasePool pool, String path, int numThreads)
       throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
-    System.out.printf("Start loading of relations for %s database\n", DEFAULT_DB_URL);
+    System.out.printf("Start loading of relations for %s database\n", path);
     final File relationsFile = new File(DEFAULT_RELATIONS_FILE);
 
     final List<Future<Integer>> futures = new ArrayList<>();
-    final int numThreads = 8;
 
     @SuppressWarnings("unchecked")
     ArrayBlockingQueue<int[]>[] relationsQueues = new ArrayBlockingQueue[numThreads];
@@ -159,8 +195,7 @@ public class PokecLoad {
     final long minutes = (relationLoadTime - hours * NANOS_IN_HOURS) / NANOS_IN_MINUTES;
     final long seconds = (relationLoadTime - hours * NANOS_IN_HOURS - minutes * NANOS_IN_MINUTES) / NANOS_IN_SECONDS;
 
-    System.out.printf("Loading of relations for %s database is completed in %d h. %d m. %d s.\n", DEFAULT_DB_URL, hours, minutes,
-        seconds);
+    System.out.printf("Loading of relations for %s database is completed in %d h. %d m. %d s.\n", path, hours, minutes, seconds);
 
     String statistics = String
         .format("Load time per relation %d us, throughput %d relation/s, %d relations were processed, %d retries were done\n",
@@ -169,15 +204,14 @@ public class PokecLoad {
     return statistics;
   }
 
-  private static String loadProfiles(ExecutorService executorService, ODatabasePool pool)
+  private static String loadProfiles(ExecutorService executorService, ODatabasePool pool, String path, int numThreads)
       throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
-    System.out.printf("Start loading of profiles for %s database\n", DEFAULT_DB_URL);
+    System.out.printf("Start loading of profiles for %s database\n", path);
 
     final ArrayBlockingQueue<PokecProfile> profileQueue = new ArrayBlockingQueue<>(256);
     final File profilesFile = new File(DEFAULT_PROFILES_FILE);
 
     final List<Future<Void>> futures = new ArrayList<>();
-    final int numThreads = 8;
     for (int i = 0; i < numThreads; i++) {
       futures.add(executorService.submit(new PokecProfileLoader(pool, profileQueue)));
     }
@@ -238,8 +272,7 @@ public class PokecLoad {
     final long seconds = (profileLoadTime - hours * NANOS_IN_HOURS - minutes * NANOS_IN_MINUTES) / NANOS_IN_SECONDS;
 
     System.out
-        .printf("Start loading of profiles for %s database is completed in %d h. %d m. %d s.\n", DEFAULT_DB_URL, hours, minutes,
-            seconds);
+        .printf("Start loading of profiles for %s database is completed in %d h. %d m. %d s.\n", path, hours, minutes, seconds);
     String statistics = String
         .format("Load time per profile %d us, throughput %d profiles/s, %d profiles were processed\n", loadTimePerProfileMks,
             profilesPerSecond, profileCounter);
@@ -247,10 +280,11 @@ public class PokecLoad {
     return statistics;
   }
 
-  private static void generateSchema(OrientDB orientDB) {
-    System.out.printf("Start schema generation for %s database\n", DEFAULT_DB_URL);
+  private static void generateSchema(OrientDB orientDB, String path, String dbName, boolean isAutosharded,
+      OClass.INDEX_TYPE indexType) {
+    System.out.printf("Start schema generation for %s database\n", path);
 
-    try (ODatabaseSession databaseSession = orientDB.open(DEFAULT_DB_NAME, "admin", "admin")) {
+    try (ODatabaseSession databaseSession = orientDB.open(dbName, "admin", "admin")) {
       final OMetadata metadata = databaseSession.getMetadata();
       final OSchema schema = metadata.getSchema();
       final OClass vertex = schema.getClass("V");
@@ -319,14 +353,18 @@ public class PokecLoad {
       profile.createProperty("companies_brands", OType.STRING);
       profile.createProperty("more", OType.STRING);
 
-      profile.createIndex("user_id_index", OClass.INDEX_TYPE.UNIQUE.toString(), null, null, "AUTOSHARDING",
-          new String[] { "user_id" });
+      if (isAutosharded) {
+        profile.createIndex("user_id_index", OClass.INDEX_TYPE.UNIQUE.toString(), null, null, "AUTOSHARDING",
+            new String[] { "user_id" });
 
-      profile.createIndex("key_index", OClass.INDEX_TYPE.UNIQUE.toString(), null, null, "AUTOSHARDING", new String[] { "key" });
-
+        profile.createIndex("key_index", OClass.INDEX_TYPE.UNIQUE.toString(), null, null, "AUTOSHARDING", new String[] { "key" });
+      } else {
+        profile.createIndex("user_id_index", indexType, "user_id");
+        profile.createIndex("key_index", indexType, "key");
+      }
     }
 
-    System.out.printf("Start schema generation for %s database is completed\n", DEFAULT_DB_URL);
+    System.out.printf("Start schema generation for %s database is completed\n", path);
   }
 
   private static PokecProfile fillPokecProfile(DateTimeFormatter dateTimeFormatter, String line) {

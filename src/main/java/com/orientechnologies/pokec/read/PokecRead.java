@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class PokecRead extends PokecWorkload {
   public static void main(String[] args) throws Exception {
-    new PokecRead().run();
+    new PokecRead().run(args);
   }
 
   @Override

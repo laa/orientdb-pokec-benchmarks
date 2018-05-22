@@ -17,20 +17,38 @@ dependencies {
 }
 
 task pokecLoad(type: JavaExec, dependsOn: classes) {
-    classpath = classpath = sourceSets.main.runtimeClasspath
+    classpath = sourceSets.main.runtimeClasspath
     main = 'com.orientechnologies.pokec.load.PokecLoad'
     jvmArgs = ["-server"]
+    args = extractArgs()
 }
 
 task pokecRead(type: JavaExec, dependsOn: classes) {
-    classpath = classpath = sourceSets.main.runtimeClasspath
+    classpath = sourceSets.main.runtimeClasspath
     main = 'com.orientechnologies.pokec.read.PokecRead'
     jvmArgs = ["-server"]
+    args = extractArgs()
 }
 
 
 task pokecContentUpdate(type: JavaExec, dependsOn: classes) {
-    classpath = classpath = sourceSets.main.runtimeClasspath
+    classpath = sourceSets.main.runtimeClasspath
     main = 'com.orientechnologies.pokec.contentupdate.PokecContentUpdate'
     jvmArgs = ["-server"]
+    args = extractArgs()
 }
+
+def extractArgs() {
+    def args = []
+    def properties = ["embedded", "engineDirectory", "dbName", "remoteURL", "numThreads", "indexType"]
+
+    properties.each { property ->
+        if (project.hasProperty(property)) {
+            args.add("-" + property)
+            args.add(project.property(property))
+        }
+    }
+
+    return args
+}
+

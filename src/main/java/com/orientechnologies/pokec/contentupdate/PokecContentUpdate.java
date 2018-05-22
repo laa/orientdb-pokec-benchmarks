@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class PokecContentUpdate extends PokecWorkload {
   public static void main(String[] args) throws Exception {
-    new PokecContentUpdate().run();
+    new PokecContentUpdate().run(args);
   }
 
   @Override

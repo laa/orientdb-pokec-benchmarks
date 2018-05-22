@@ -3,10 +3,15 @@ package com.orientechnologies.pokec;
 import com.orientechnologies.orient.core.db.ODatabasePool;
 import com.orientechnologies.orient.core.db.ODatabaseSession;
 import com.orientechnologies.orient.core.db.OrientDB;
-import com.orientechnologies.orient.core.db.OrientDBConfig;
+import com.orientechnologies.pokec.common.CommandLineUtils;
 import com.orientechnologies.pokec.common.ZipfianGenerator;
 import com.orientechnologies.pokec.load.PokecLoad;
 import com.orientechnologies.pokec.read.PokecReader;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,31 +22,40 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.orientechnologies.pokec.load.PokecLoad.DEFAULT_DB_NAME;
-
 public abstract class PokecWorkload {
   private static final long NANOS_IN_HOURS   = 1_000_000_000L * 60 * 60;
   private static final long NANOS_IN_MINUTES = 1_000_000_000L * 60;
-  private static final long NANOS_IN_SECONDS = 1_000_000_000L ;
+  private static final long NANOS_IN_SECONDS = 1_000_000_000L;
 
-  protected void run() throws Exception {
-    final long profilesCount;
+  protected void run(String[] args) throws Exception {
+    Options options = CommandLineUtils.generateCommandLineOptions();
 
-    try (OrientDB orientDB = new OrientDB(PokecLoad.DEFAULT_DB_URL, OrientDBConfig.defaultConfig())) {
-      System.out.println("Opening " + DEFAULT_DB_NAME + " database");
-      try (ODatabaseSession databaseSession = orientDB.open(DEFAULT_DB_NAME, "admin", "admin")) {
-        profilesCount = databaseSession.countClass(PokecLoad.PROFILE_CLASS);
+    CommandLineParser parser = new DefaultParser();
+    try {
+      CommandLine cmd = parser.parse(options, args);
+
+      final long profilesCount;
+      try (OrientDB orientDB = CommandLineUtils.createOrientDBInstance(cmd)) {
+        final String dbName = CommandLineUtils.dbName(cmd);
+        System.out.println("Opening " + dbName + " database");
+        try (ODatabaseSession databaseSession = orientDB.open(dbName, "admin", "admin")) {
+          profilesCount = databaseSession.countClass(PokecLoad.PROFILE_CLASS);
+        }
+        System.out.printf("%d profiles were detected \n", profilesCount);
+
+        final ZipfianGenerator generator = new ZipfianGenerator(profilesCount);
+        final int numThreads = CommandLineUtils.numThreads(cmd);
+
+        final long iterationsPerThread = profilesCount / numThreads;
+
+        final ExecutorService executorService = Executors.newCachedThreadPool();
+        warmUp((int) profilesCount, orientDB, generator, numThreads, iterationsPerThread, executorService, dbName);
+
+        final String path = CommandLineUtils.path(cmd);
+        workload((int) profilesCount, orientDB, generator, numThreads, iterationsPerThread, executorService, dbName, path);
       }
-      System.out.printf("%d profiles were detected \n", profilesCount);
-
-      final ZipfianGenerator generator = new ZipfianGenerator(profilesCount);
-      final int numThreads = 8;
-
-      final long iterationsPerThread = profilesCount / numThreads;
-
-      final ExecutorService executorService = Executors.newCachedThreadPool();
-      warmUp((int) profilesCount, orientDB, generator, numThreads, iterationsPerThread, executorService);
-      workload((int) profilesCount, orientDB, generator, numThreads, iterationsPerThread, executorService);
+    } catch (ParseException pe) {
+      System.out.println(pe.getMessage());
     }
   }
 
@@ -49,11 +63,11 @@ public abstract class PokecWorkload {
       int itemsCount, AtomicInteger iterationsCounter);
 
   private void workload(int profilesCount, OrientDB orientDB, ZipfianGenerator generator, int numThreads, long iterationsPerThread,
-      ExecutorService executorService) throws Exception {
+      ExecutorService executorService, String dbName, String path) throws Exception {
     List<Future<Integer>> futures = new ArrayList<>();
 
-    try (ODatabasePool pool = new ODatabasePool(orientDB, DEFAULT_DB_NAME, "admin", "admin")) {
-      System.out.printf("Starting of workload with %d threads, %d iterations for each thread\n", numThreads, iterationsPerThread);
+    try (ODatabasePool pool = new ODatabasePool(orientDB, dbName, "admin", "admin")) {
+      System.out.printf("Starting of workload with %d threads, %d operations for each thread\n", numThreads, iterationsPerThread);
       final AtomicInteger iterationsCounter = new AtomicInteger();
 
       Timer statusTimer = new Timer();
@@ -84,7 +98,7 @@ public abstract class PokecWorkload {
             final long timePerIterationInMks = timePerIteration / 1000;
             final long iterationsPerSecond = 1_000_000_000 / timePerIteration;
 
-            System.out.printf("%d iterations out of %d are passed, avg. iteration time is %d us, throughput %d iter/s\n",
+            System.out.printf("%d operations out of %d are passed, avg. operation time is %d us, throughput %d op/s\n",
                 currentIterations, numThreads * iterationsPerThread, timePerIterationInMks, iterationsPerSecond);
           }
         }
@@ -112,18 +126,17 @@ public abstract class PokecWorkload {
 
       statusTimer.cancel();
 
-      System.out
-          .printf("Workload is completed for %d h. %d min. %d s.  avg. iteration time is %d us, throughput %d iter/s \n", hours,
-              minutes, seconds, timePerIterationInMks, iterationsPerSecond);
+      System.out.printf("Workload is completed for %s in %d h. %d min. %d s. avg. operation time is %d us, throughput %d op/s, "
+          + "number of threads %d\n", path, hours, minutes, seconds, timePerIterationInMks, iterationsPerSecond, numThreads);
     }
   }
 
   private void warmUp(int profilesCount, OrientDB orientDB, ZipfianGenerator generator, int numThreads, long iterationsPerThread,
-      ExecutorService executorService) throws InterruptedException, java.util.concurrent.ExecutionException {
+      ExecutorService executorService, String dbName) throws InterruptedException, java.util.concurrent.ExecutionException {
     List<Future<Integer>> futures = new ArrayList<>();
 
-    try (ODatabasePool pool = new ODatabasePool(orientDB, DEFAULT_DB_NAME, "admin", "admin")) {
-      System.out.printf("Starting of warm up with %d threads, %d iterations for each thread\n", numThreads, iterationsPerThread);
+    try (ODatabasePool pool = new ODatabasePool(orientDB, dbName, "admin", "admin")) {
+      System.out.printf("Starting of warm up with %d threads, %d operations for each thread\n", numThreads, iterationsPerThread);
       final AtomicInteger iterationsCounter = new AtomicInteger();
 
       Timer statusTimer = new Timer();
@@ -154,7 +167,7 @@ public abstract class PokecWorkload {
             final long timePerIterationInMks = timePerIteration / 1000;
             final long iterationsPerSecond = 1_000_000_000 / timePerIteration;
 
-            System.out.printf("%d iterations out of %d are passed, avg. iteration time is %d us, throughput %d iter/s\n",
+            System.out.printf("%d operations out of %d are passed, avg. operation time is %d us, throughput %d op/s\n",
                 currentIterations, numThreads * iterationsPerThread, timePerIterationInMks, iterationsPerSecond);
           }
         }
@@ -183,7 +196,7 @@ public abstract class PokecWorkload {
       statusTimer.cancel();
 
       System.out
-          .printf("Warm up is completed for %d h. %d min. %d s.  avg. iteration time is %d us, throughput %d iter/s \n", hours,
+          .printf("Warm up is completed for %d h. %d min. %d s. avg. operation time is %d us, throughput %d op/s \n", hours,
               minutes, seconds, timePerIterationInMks, iterationsPerSecond);
     }
   }
