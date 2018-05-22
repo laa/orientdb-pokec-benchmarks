@@ -59,7 +59,9 @@ public abstract class PokecWorkload {
         warmUp((int) profilesCount, orientDB, generator, numThreads, iterationsPerThread, executorService, dbName);
 
         final String path = CommandLineUtils.path(cmd);
-        workload((int) profilesCount, orientDB, generator, numThreads, iterationsPerThread, executorService, dbName, path);
+        final String csvSuffix = CommandLineUtils.getCsvSuffix(cmd);
+        workload((int) profilesCount, orientDB, generator, numThreads, iterationsPerThread, executorService, dbName, path,
+            csvSuffix);
       }
     } catch (ParseException pe) {
       System.out.println(pe.getMessage());
@@ -70,11 +72,11 @@ public abstract class PokecWorkload {
       int itemsCount, AtomicInteger iterationsCounter);
 
   private void workload(int profilesCount, OrientDB orientDB, ZipfianGenerator generator, int numThreads, long iterationsPerThread,
-      ExecutorService executorService, String dbName, String path) throws Exception {
+      ExecutorService executorService, String dbName, String path, String csvSuffix) throws Exception {
     List<Future<Integer>> futures = new ArrayList<>();
 
     final String workloadName = this.getClass().getSimpleName();
-    try (FileWriter csvWriter = new FileWriter(String.format("%s %tc.csv", workloadName, new Date()))) {
+    try (FileWriter csvWriter = new FileWriter(String.format("%s %tc%s.csv", workloadName, new Date(), csvSuffix))) {
       try (CSVPrinter csvPrinter = new CSVPrinter(csvWriter, CSVFormat.DEFAULT)) {
         try (ODatabasePool pool = new ODatabasePool(orientDB, dbName, "admin", "admin")) {
           System.out
@@ -154,9 +156,6 @@ public abstract class PokecWorkload {
               + "number of threads %d\n", path, hours, minutes, seconds, timePerIterationInMks, iterationsPerSecond, numThreads);
 
           csvPrinter.printRecord(numThreads * iterationsPerSecond, timePerIterationInMks, iterationsPerSecond);
-
-          csvPrinter.printComment("Number of threads " + numThreads);
-          csvPrinter.printComment("Database path " + path);
         }
       }
     }

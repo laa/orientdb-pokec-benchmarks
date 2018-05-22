@@ -57,7 +57,7 @@ task pokecUpdate(type: JavaExec, dependsOn: classes) {
 
 def extractArgs() {
     def args = []
-    def properties = ["embedded", "engineDirectory", "dbName", "remoteURL", "numThreads", "indexType"]
+    def properties = ["embedded", "engineDirectory", "dbName", "remoteURL", "numThreads", "indexType", "csvSuffix"]
 
     properties.each { property ->
         if (project.hasProperty(property)) {

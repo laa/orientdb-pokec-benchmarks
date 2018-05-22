@@ -21,6 +21,7 @@ public class CommandLineUtils {
   private static final String REMOTE_URL       = "remoteURL";
   private static final String NUM_THREADS      = "numThreads";
   private static final String INDEX_TYPE       = "indexType";
+  private static final String CSV_SUFFIX       = "csvSuffix";
 
   private static final String TREE_INDEX        = "tree";
   private static final String HASH_INDEX        = "hash";
@@ -37,6 +38,8 @@ public class CommandLineUtils {
             + " In case if embedded storage have been chosen for benchmarks.").hasArg().required(false).build();
     Option dbName = Option.builder(DB_NAME).argName(DB_NAME).desc("Name of the database which will be used for benchmarks.")
         .hasArg().required(false).build();
+    Option csvSuffix = Option.builder(CSV_SUFFIX).argName(CSV_SUFFIX).desc("Suffix which is added to any CSV report.").hasArg()
+        .required(false).build();
     Option remoteURL = Option.builder(REMOTE_URL).argName(REMOTE_URL).hasArg().required(false)
         .desc("URL to the remote storage. " + "If remote storage has chosen for benchmarking").build();
     Option numThreadsOpt = Option.builder(NUM_THREADS).argName(NUM_THREADS).desc("Amount of threads to use for benchmark").hasArg().
@@ -51,8 +54,17 @@ public class CommandLineUtils {
     options.addOption(remoteURL);
     options.addOption(numThreadsOpt);
     options.addOption(indexType);
+    options.addOption(csvSuffix);
 
     return options;
+  }
+
+  public static String getCsvSuffix(CommandLine cmd) {
+    if (cmd.hasOption(CSV_SUFFIX)) {
+      return cmd.getOptionValue(CSV_SUFFIX);
+    }
+
+    return "";
   }
 
   public static OrientDB createOrientDBInstance(CommandLine cmd) {

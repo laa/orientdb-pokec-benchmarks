@@ -98,9 +98,10 @@ public class PokecLoad {
         final int numThreads = CommandLineUtils.numThreads(cmd);
         System.out.printf("%d threads will be used for data load\n", numThreads);
 
+        final String csvSuffix = CommandLineUtils.getCsvSuffix(cmd);
         try (ODatabasePool pool = new ODatabasePool(orientDB, dbName, "admin", "admin")) {
-          profileStatistics = loadProfiles(executorService, pool, path, numThreads, isAutosharded, indexType);
-          relationStatistics = loadRelations(executorService, pool, path, numThreads, isAutosharded, indexType);
+          profileStatistics = loadProfiles(executorService, pool, path, numThreads, csvSuffix);
+          relationStatistics = loadRelations(executorService, pool, path, numThreads, csvSuffix);
 
           executorService.shutdown();
         }
@@ -123,8 +124,8 @@ public class PokecLoad {
 
   }
 
-  private static String loadRelations(ExecutorService executorService, ODatabasePool pool, String path, int numThreads,
-      boolean isAutoSharded, OClass.INDEX_TYPE indexType)
+  private static String loadRelations(ExecutorService executorService, ODatabasePool pool, String path,
+      int numThreads, String csvSuffix)
       throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
     System.out.printf("Start loading of relations for %s database\n", path);
     final File relationsFile = new File(DEFAULT_RELATIONS_FILE);
@@ -139,7 +140,7 @@ public class PokecLoad {
       relationsQueues[i] = queue;
     }
 
-    try (FileWriter csvWriter = new FileWriter(String.format("relationsLoad %tc.csv", new Date()))) {
+    try (FileWriter csvWriter = new FileWriter(String.format("relationsLoad %tc%s.csv", new Date(), csvSuffix))) {
       try (CSVPrinter csvPrinter = new CSVPrinter(csvWriter, CSVFormat.DEFAULT)) {
         int relationCounter = 0;
         final long startRelationLoadTs = System.nanoTime();
@@ -203,15 +204,6 @@ public class PokecLoad {
         final long seconds = (relationLoadTime - hours * NANOS_IN_HOURS - minutes * NANOS_IN_MINUTES) / NANOS_IN_SECONDS;
 
         csvPrinter.printRecord(relationCounter, loadTimePerRelationMks, relationsPerSecond);
-
-        csvPrinter.printComment("Number of threads " + numThreads);
-        if (isAutoSharded) {
-          csvPrinter.printComment("Autosharded index is used");
-        } else {
-          csvPrinter.printComment("Index type " + indexType);
-        }
-        csvPrinter.printComment("Database path " + path);
-
         System.out
             .printf("Loading of relations for %s database is completed in %d h. %d m. %d s.\n", path, hours, minutes, seconds);
 
@@ -225,8 +217,8 @@ public class PokecLoad {
     }
   }
 
-  private static String loadProfiles(ExecutorService executorService, ODatabasePool pool, String path, int numThreads,
-      boolean isAutoSharded, OClass.INDEX_TYPE indexType)
+  private static String loadProfiles(ExecutorService executorService, ODatabasePool pool, String path,
+      int numThreads, String csvSuffix)
       throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
     System.out.printf("Start loading of profiles for %s database\n", path);
 
@@ -238,7 +230,7 @@ public class PokecLoad {
       futures.add(executorService.submit(new PokecProfileLoader(pool, profileQueue)));
     }
 
-    try (FileWriter csvWriter = new FileWriter(String.format("profileLoad %tc.csv", new Date()))) {
+    try (FileWriter csvWriter = new FileWriter(String.format("profileLoad %tc%s.csv", new Date(), csvSuffix))) {
       try (CSVPrinter csvPrinter = new CSVPrinter(csvWriter, CSVFormat.DEFAULT)) {
         int profileCounter = 0;
         final long startProfileLoadTs = System.nanoTime();
@@ -296,15 +288,6 @@ public class PokecLoad {
         final long hours = profileLoadTime / NANOS_IN_HOURS;
         final long minutes = (profileLoadTime - hours * NANOS_IN_HOURS) / NANOS_IN_MINUTES;
         final long seconds = (profileLoadTime - hours * NANOS_IN_HOURS - minutes * NANOS_IN_MINUTES) / NANOS_IN_SECONDS;
-
-        csvPrinter.printRecord(profileCounter, loadTimePerProfileMks, profilesPerSecond);
-        csvPrinter.printComment("Number of threads " + numThreads);
-        if (isAutoSharded) {
-          csvPrinter.printComment("Autosharded index is used");
-        } else {
-          csvPrinter.printComment("Index type " + indexType);
-        }
-        csvPrinter.printComment("Database path " + path);
 
         System.out
             .printf("Start loading of profiles for %s database is completed in %d h. %d m. %d s.\n", path, hours, minutes, seconds);
