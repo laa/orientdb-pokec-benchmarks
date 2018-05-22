@@ -7,14 +7,14 @@ import com.orientechnologies.pokec.common.ZipfianGenerator;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class PokecContentUpdate extends PokecWorkload {
+public class PokecUpdate extends PokecWorkload {
   public static void main(String[] args) throws Exception {
-    new PokecContentUpdate().run(args);
+    new PokecUpdate().run(args);
   }
 
   @Override
   public PokecWorkloadTask createTask(int iterationsCount, ODatabasePool pool, ZipfianGenerator zipfianGenerator, int itemsCount,
       AtomicInteger iterationsCounter) {
-    return new PokecContentUpdater(iterationsCount, pool, zipfianGenerator, itemsCount, iterationsCounter);
+    return new PokecUpdater(iterationsCount, pool, zipfianGenerator, itemsCount, iterationsCounter);
   }
 }

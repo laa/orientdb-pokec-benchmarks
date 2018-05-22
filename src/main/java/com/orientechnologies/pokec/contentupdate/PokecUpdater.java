@@ -10,8 +10,8 @@ import com.orientechnologies.pokec.load.PokecLoad;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class PokecContentUpdater extends PokecWorkloadTask {
-  public PokecContentUpdater(int iterationsCount, ODatabasePool pool, ZipfianGenerator zipfianGenerator, int itemsCount,
+public class PokecUpdater extends PokecWorkloadTask {
+  PokecUpdater(int iterationsCount, ODatabasePool pool, ZipfianGenerator zipfianGenerator, int itemsCount,
       AtomicInteger iterationsCounter) {
     super(iterationsCount, pool, zipfianGenerator, itemsCount, iterationsCounter);
   }

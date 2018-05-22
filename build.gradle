@@ -1,3 +1,7 @@
+plugins {
+    id "de.undercouch.download" version "3.4.3"
+}
+
 group = 'com.orientechnologies'
 version = '1.0-SNAPSHOT'
 
@@ -16,7 +20,20 @@ dependencies {
     testCompile group: 'junit', name: 'junit', version: '4.12'
 }
 
-task pokecLoad(type: JavaExec, dependsOn: classes) {
+
+task downloadProfiles(type: Download) {
+    src 'https://snap.stanford.edu/data/soc-pokec-profiles.txt.gz'
+    dest rootDir
+    overwrite false
+}
+
+task downloadRelations(type: Download) {
+    src 'https://snap.stanford.edu/data/soc-pokec-relationships.txt.gz'
+    dest rootDir
+    overwrite false
+}
+
+task pokecLoad(type: JavaExec, dependsOn: [classes, downloadProfiles, downloadRelations]) {
     classpath = sourceSets.main.runtimeClasspath
     main = 'com.orientechnologies.pokec.load.PokecLoad'
     jvmArgs = ["-server"]
@@ -30,10 +47,9 @@ task pokecRead(type: JavaExec, dependsOn: classes) {
     args = extractArgs()
 }
 
-
-task pokecContentUpdate(type: JavaExec, dependsOn: classes) {
+task pokecUpdate(type: JavaExec, dependsOn: classes) {
     classpath = sourceSets.main.runtimeClasspath
-    main = 'com.orientechnologies.pokec.contentupdate.PokecContentUpdate'
+    main = 'com.orientechnologies.pokec.contentupdate.PokecUpdate'
     jvmArgs = ["-server"]
     args = extractArgs()
 }
