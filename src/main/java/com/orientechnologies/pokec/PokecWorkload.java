@@ -12,8 +12,15 @@ import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
 
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -66,68 +73,92 @@ public abstract class PokecWorkload {
       ExecutorService executorService, String dbName, String path) throws Exception {
     List<Future<Integer>> futures = new ArrayList<>();
 
-    try (ODatabasePool pool = new ODatabasePool(orientDB, dbName, "admin", "admin")) {
-      System.out.printf("Starting of workload with %d threads, %d operations for each thread\n", numThreads, iterationsPerThread);
-      final AtomicInteger iterationsCounter = new AtomicInteger();
+    final String workloadName = this.getClass().getSimpleName();
+    try (FileWriter csvWriter = new FileWriter(String.format("%s %tc.csv", workloadName, new Date()))) {
+      try (CSVPrinter csvPrinter = new CSVPrinter(csvWriter, CSVFormat.DEFAULT)) {
+        try (ODatabasePool pool = new ODatabasePool(orientDB, dbName, "admin", "admin")) {
+          System.out
+              .printf("Starting of workload with %d threads, %d operations for each thread\n", numThreads, iterationsPerThread);
+          final AtomicInteger iterationsCounter = new AtomicInteger();
 
-      Timer statusTimer = new Timer();
-      statusTimer.scheduleAtFixedRate(new TimerTask() {
-        private long ts = -1;
-        private long iterationsCount;
+          Timer statusTimer = new Timer();
+          statusTimer.scheduleAtFixedRate(new TimerTask() {
+            private long ts = -1;
+            private long iterationsCount;
 
-        @Override
-        public void run() {
-          if (ts == -1) {
-            ts = System.nanoTime();
-            iterationsCount = iterationsCounter.get();
-          } else {
-            long currentTs = System.nanoTime();
-            long currentIterations = iterationsCounter.get();
+            @Override
+            public void run() {
+              if (ts == -1) {
+                ts = System.nanoTime();
+                iterationsCount = iterationsCounter.get();
+              } else {
+                long currentTs = System.nanoTime();
+                long currentIterations = iterationsCounter.get();
 
-            long timePassed = currentTs - ts;
-            long iterationsPassed = currentIterations - iterationsCount;
+                long timePassed = currentTs - ts;
+                long iterationsPassed = currentIterations - iterationsCount;
 
-            ts = currentTs;
-            iterationsCount = currentIterations;
+                ts = currentTs;
+                iterationsCount = currentIterations;
 
-            if (iterationsPassed == 0) {
-              return;
+                if (iterationsPassed == 0) {
+                  return;
+                }
+
+                final long timePerIteration = timePassed / iterationsPassed;
+                final long timePerIterationInMks = timePerIteration / 1000;
+                final long iterationsPerSecond = 1_000_000_000 / timePerIteration;
+
+                System.out.printf("%d operations out of %d are passed, avg. operation time is %d us, throughput %d op/s\n",
+                    currentIterations, numThreads * iterationsPerThread, timePerIterationInMks, iterationsPerSecond);
+                try {
+                  csvPrinter.printRecord(currentIterations, timePerIterationInMks, iterationsPerSecond);
+                } catch (IOException e) {
+                  final StringWriter stringWriter = new StringWriter();
+                  final PrintWriter printWriter = new PrintWriter(stringWriter);
+
+                  printWriter.println("Can not write workload data into csv file");
+                  e.printStackTrace(printWriter);
+
+                  printWriter.flush();
+
+                  System.err.println(stringWriter.toString());
+                }
+              }
             }
+          }, 10, 10 * 1000);
 
-            final long timePerIteration = timePassed / iterationsPassed;
-            final long timePerIterationInMks = timePerIteration / 1000;
-            final long iterationsPerSecond = 1_000_000_000 / timePerIteration;
-
-            System.out.printf("%d operations out of %d are passed, avg. operation time is %d us, throughput %d op/s\n",
-                currentIterations, numThreads * iterationsPerThread, timePerIterationInMks, iterationsPerSecond);
+          final long workloadStartTs = System.nanoTime();
+          for (int i = 0; i < numThreads; i++) {
+            futures.add(
+                executorService.submit(createTask((int) iterationsPerThread, pool, generator, profilesCount, iterationsCounter)));
           }
+
+          for (Future<Integer> future : futures) {
+            future.get();
+          }
+          final long workloadEndTs = System.nanoTime();
+          final long worloadInterval = workloadEndTs - workloadStartTs;
+
+          final long hours = worloadInterval / NANOS_IN_HOURS;
+          final long minutes = (worloadInterval - hours * NANOS_IN_HOURS) / NANOS_IN_MINUTES;
+          final long seconds = (worloadInterval - hours * NANOS_IN_HOURS - minutes * NANOS_IN_MINUTES) / NANOS_IN_SECONDS;
+
+          final long timePerIteration = worloadInterval / (numThreads * iterationsPerThread);
+          final long timePerIterationInMks = timePerIteration / 1000;
+          final long iterationsPerSecond = 1_000_000_000 / timePerIteration;
+
+          statusTimer.cancel();
+
+          System.out.printf("Workload is completed for %s in %d h. %d min. %d s. avg. operation time is %d us, throughput %d op/s, "
+              + "number of threads %d\n", path, hours, minutes, seconds, timePerIterationInMks, iterationsPerSecond, numThreads);
+
+          csvPrinter.printRecord(numThreads * iterationsPerSecond, timePerIterationInMks, iterationsPerSecond);
+
+          csvPrinter.printComment("Number of threads " + numThreads);
+          csvPrinter.printComment("Database path " + path);
         }
-      }, 10, 10 * 1000);
-
-      final long workloadStartTs = System.nanoTime();
-      for (int i = 0; i < numThreads; i++) {
-        futures
-            .add(executorService.submit(createTask((int) iterationsPerThread, pool, generator, profilesCount, iterationsCounter)));
       }
-
-      for (Future<Integer> future : futures) {
-        future.get();
-      }
-      final long workloadEndTs = System.nanoTime();
-      final long worloadInterval = workloadEndTs - workloadStartTs;
-
-      final long hours = worloadInterval / NANOS_IN_HOURS;
-      final long minutes = (worloadInterval - hours * NANOS_IN_HOURS) / NANOS_IN_MINUTES;
-      final long seconds = (worloadInterval - hours * NANOS_IN_HOURS - minutes * NANOS_IN_MINUTES) / NANOS_IN_SECONDS;
-
-      final long timePerIteration = worloadInterval / (numThreads * iterationsPerThread);
-      final long timePerIterationInMks = timePerIteration / 1000;
-      final long iterationsPerSecond = 1_000_000_000 / timePerIteration;
-
-      statusTimer.cancel();
-
-      System.out.printf("Workload is completed for %s in %d h. %d min. %d s. avg. operation time is %d us, throughput %d op/s, "
-          + "number of threads %d\n", path, hours, minutes, seconds, timePerIterationInMks, iterationsPerSecond, numThreads);
     }
   }
 
@@ -167,8 +198,9 @@ public abstract class PokecWorkload {
             final long timePerIterationInMks = timePerIteration / 1000;
             final long iterationsPerSecond = 1_000_000_000 / timePerIteration;
 
-            System.out.printf("%d operations out of %d are passed, avg. operation time is %d us, throughput %d op/s\n",
-                currentIterations, numThreads * iterationsPerThread, timePerIterationInMks, iterationsPerSecond);
+            System.out
+                .printf("%d operations out of %d are passed, avg. operation time is %d us, throughput %d op/s\n", currentIterations,
+                    numThreads * iterationsPerThread, timePerIterationInMks, iterationsPerSecond);
           }
         }
       }, 10, 10 * 1000);
@@ -195,9 +227,8 @@ public abstract class PokecWorkload {
 
       statusTimer.cancel();
 
-      System.out
-          .printf("Warm up is completed for %d h. %d min. %d s. avg. operation time is %d us, throughput %d op/s \n", hours,
-              minutes, seconds, timePerIterationInMks, iterationsPerSecond);
+      System.out.printf("Warm up is completed for %d h. %d min. %d s. avg. operation time is %d us, throughput %d op/s \n", hours,
+          minutes, seconds, timePerIterationInMks, iterationsPerSecond);
     }
   }
 }
