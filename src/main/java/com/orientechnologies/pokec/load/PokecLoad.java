@@ -289,6 +289,7 @@ public class PokecLoad {
         final long minutes = (profileLoadTime - hours * NANOS_IN_HOURS) / NANOS_IN_MINUTES;
         final long seconds = (profileLoadTime - hours * NANOS_IN_HOURS - minutes * NANOS_IN_MINUTES) / NANOS_IN_SECONDS;
 
+        csvPrinter.printRecord(profileCounter, loadTimePerProfileMks, profilesPerSecond);
         System.out
             .printf("Start loading of profiles for %s database is completed in %d h. %d m. %d s.\n", path, hours, minutes, seconds);
         String statistics = String

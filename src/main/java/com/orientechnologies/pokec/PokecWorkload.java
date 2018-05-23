@@ -157,10 +157,10 @@ public abstract class PokecWorkload {
 
           statusTimer.cancel();
 
+          csvPrinter.printRecord(numThreads * iterationsPerSecond, timePerIterationInMks, iterationsPerSecond);
+
           System.out.printf("Workload is completed for %s in %d h. %d min. %d s. avg. operation time is %d us, throughput %d op/s, "
               + "number of threads %d\n", path, hours, minutes, seconds, timePerIterationInMks, iterationsPerSecond, numThreads);
-
-          csvPrinter.printRecord(numThreads * iterationsPerSecond, timePerIterationInMks, iterationsPerSecond);
         }
       }
     }

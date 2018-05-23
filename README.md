@@ -41,7 +41,7 @@ By default autosharded index is used.
 To pass those parameters following syntax is used `-P<param name>=<param value>`
 To run a workload use following syntax `gradle <workload name> <parameters>`.
 For example:
-1. To initially load data you can use following command `gradle pokecLoad -PcsvSuffix=\(phlogging,tree\) -PindexType=hash`. It will
+1. To initially load data you can use following command `gradle pokecLoad -PcsvSuffix=\(phlogging,tree\) -PindexType=tree`. It will
 load data into pokec database and will use hash index for all database indexes. All CSV reports will have suffix `(phloggin, tree)`
 at the end.
 2. To run update workload you can use following command `gradle pokecUpdate -PcsvSuffix=\(phlogging,tree\)`. It will run workload
