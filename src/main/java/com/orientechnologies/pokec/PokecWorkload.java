@@ -53,13 +53,18 @@ public abstract class PokecWorkload {
         final ZipfianGenerator generator = new ZipfianGenerator(profilesCount);
         final int numThreads = CommandLineUtils.numThreads(cmd);
 
-        final long iterationsPerThread = profilesCount / numThreads;
+        final int warmupOperations = CommandLineUtils.getWarmUpOperations(cmd, (int) profilesCount);
+        final long warmUpIterationsPerThread = warmupOperations / numThreads;
 
         final ExecutorService executorService = Executors.newCachedThreadPool();
-        warmUp((int) profilesCount, orientDB, generator, numThreads, iterationsPerThread, executorService, dbName);
+        warmUp((int) profilesCount, orientDB, generator, numThreads, warmUpIterationsPerThread, executorService, dbName);
 
         final String path = CommandLineUtils.path(cmd);
         final String csvSuffix = CommandLineUtils.getCsvSuffix(cmd);
+
+        final int operations = CommandLineUtils.getOperations(cmd, (int) profilesCount);
+        final long iterationsPerThread = operations / numThreads;
+
         workload((int) profilesCount, orientDB, generator, numThreads, iterationsPerThread, executorService, dbName, path,
             csvSuffix);
       }

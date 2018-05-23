@@ -15,13 +15,15 @@ public class CommandLineUtils {
   private static final String DEFAULT_DB_NAME          = "pokec";
   private static final String DEFAULT_ENGINE_DIRECTORY = "./build/databases";
 
-  private static final String EMBEDDED         = "embedded";
-  private static final String ENGINE_DIRECTORY = "engineDirectory";
-  private static final String DB_NAME          = "dbName";
-  private static final String REMOTE_URL       = "remoteURL";
-  private static final String NUM_THREADS      = "numThreads";
-  private static final String INDEX_TYPE       = "indexType";
-  private static final String CSV_SUFFIX       = "csvSuffix";
+  private static final String EMBEDDED          = "embedded";
+  private static final String ENGINE_DIRECTORY  = "engineDirectory";
+  private static final String DB_NAME           = "dbName";
+  private static final String REMOTE_URL        = "remoteURL";
+  private static final String NUM_THREADS       = "numThreads";
+  private static final String INDEX_TYPE        = "indexType";
+  private static final String CSV_SUFFIX        = "csvSuffix";
+  private static final String WARMUP_OPERATIONS = "warmUpOperations";
+  private static final String OPERATIONS        = "operations";
 
   private static final String TREE_INDEX        = "tree";
   private static final String HASH_INDEX        = "hash";
@@ -47,6 +49,12 @@ public class CommandLineUtils {
     Option indexType = Option.builder(INDEX_TYPE).argName(INDEX_TYPE).hasArg().required(false).
         desc("Type of index is used in pokec benchmark, possible values are: " + TREE_INDEX + ", " + HASH_INDEX + ", "
             + AUTOSHARDED_INDEX + ". " + AUTOSHARDED_INDEX + " is used by default").build();
+    Option warmUpOperations = Option.builder(WARMUP_OPERATIONS).argName(WARMUP_OPERATIONS)
+        .desc("Amount of operations to be executed during warmup").hasArg().
+            required(false).build();
+    Option operations = Option.builder(OPERATIONS).argName(OPERATIONS).desc("Amount of operations to be executed during workload")
+        .hasArg().
+            required(false).build();
 
     options.addOption(embedded);
     options.addOption(engineDirectory);
@@ -55,6 +63,8 @@ public class CommandLineUtils {
     options.addOption(numThreadsOpt);
     options.addOption(indexType);
     options.addOption(csvSuffix);
+    options.addOption(warmUpOperations);
+    options.addOption(operations);
 
     return options;
   }
@@ -65,6 +75,22 @@ public class CommandLineUtils {
     }
 
     return "";
+  }
+
+  public static int getWarmUpOperations(CommandLine cmd, int profilesCount) {
+    if (cmd.hasOption(WARMUP_OPERATIONS)) {
+      return Integer.parseInt(cmd.getOptionValue(WARMUP_OPERATIONS));
+    }
+
+    return 2 * profilesCount;
+  }
+
+  public static int getOperations(CommandLine cmd, int profilesCount) {
+    if (cmd.hasOption(OPERATIONS)) {
+      return Integer.parseInt(cmd.getOptionValue(OPERATIONS));
+    }
+
+    return 4 * profilesCount;
   }
 
   public static OrientDB createOrientDBInstance(CommandLine cmd) {

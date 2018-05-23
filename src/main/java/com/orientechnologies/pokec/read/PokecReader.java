@@ -17,6 +17,8 @@ public class PokecReader extends PokecWorkloadTask {
 
   @Override
   public void execute(ODatabaseSession session, OVertex vertex, ZipfianGenerator zipfianGenerator, int itemsCount, Random random) {
-    //do nothing
+    for (String property : vertex.getPropertyNames()) {
+      vertex.getProperty(property);
+    }
   }
 }
