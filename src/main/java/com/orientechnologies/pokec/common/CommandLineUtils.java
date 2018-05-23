@@ -43,7 +43,7 @@ public class CommandLineUtils {
     Option csvSuffix = Option.builder(CSV_SUFFIX).argName(CSV_SUFFIX).desc("Suffix which is added to any CSV report.").hasArg()
         .required(false).build();
     Option remoteURL = Option.builder(REMOTE_URL).argName(REMOTE_URL).hasArg().required(false)
-        .desc("URL to the remote storage. " + "If remote storage has chosen for benchmarking").build();
+        .desc("URL to the remote storage. If remote storage has chosen for benchmarking").build();
     Option numThreadsOpt = Option.builder(NUM_THREADS).argName(NUM_THREADS).desc("Amount of threads to use for benchmark").hasArg().
         required(false).build();
     Option indexType = Option.builder(INDEX_TYPE).argName(INDEX_TYPE).hasArg().required(false).
