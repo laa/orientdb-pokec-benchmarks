@@ -55,6 +55,12 @@ task pokecUpdate(type: JavaExec, dependsOn: classes) {
     args = extractArgs()
 }
 
+task heapTest(type: JavaExec,dependsOn: classes) {
+    classpath = sourceSets.main.runtimeClasspath
+    main = 'com.orientechnologies.pokec.HeapTest'
+    jvmArgs = ["-server"]
+}
+
 def extractArgs() {
     def args = []
     def properties = ["embedded", "engineDirectory", "dbName", "remoteURL", "numThreads", "indexType", "csvSuffix",
